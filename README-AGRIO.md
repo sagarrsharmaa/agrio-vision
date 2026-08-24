@@ -34,6 +34,8 @@ The most-starred option (`manthan89-py/Plant-Disease-Detection`, 376★) was rej
 | Change | Reason |
 |---|---|
 | `app.py` — weights source now reads `MODEL_PATH` / `GDRIVE_FILE_ID` from the environment, falling back to `st.secrets` | Upstream hard-required a Streamlit secrets file, so the container could not boot. It now runs from a mounted `./models/best.pt`. |
+| `app.py` — `st.secrets` access wrapped in `_secret()` | `st.secrets.get()` raises `StreamlitSecretNotFoundError` when no `secrets.toml` exists, killing the script at import outside Streamlit Cloud. |
+| `app.py` — falls back to stock COCO `yolov8n.pt` with a loud warning banner | Upstream never published its trained `best.pt` (private Drive, Roboflow-gated dataset). The pipeline is now runnable end to end while we train our own weights. |
 | `Dockerfile` | CPU-only image (`--index-url .../whl/cpu`) — the AGRIO field node has no discrete GPU, so the container should mirror it. Non-root user, healthcheck, pinned OpenCV system libs from upstream `packages.txt`. |
 | `docker-compose.yml`, `.env.example` | One-command run; weights mounted read-only rather than baked into the image. |
 | `.dockerignore` | Keeps the 24 MB demo video and the 5.5 MB notebook out of the build context. |
@@ -91,4 +93,15 @@ Upstream detects **10 leaf-disease classes**. AGRIO needs the same detector head
 3. **INT8 export** — `model.export(format="onnx")` → AI Hub quantize job → on-device latency measurement on real QCS6490 hardware.
 4. **Field data** — upstream's accuracy is reported on curated imagery. We will report ours on field images only, per the lab-to-field discipline in the deck.
 
-> Honest status: items 1–4 are **not implemented yet**. Today this fork is upstream's disease detector, containerised and made runnable without secrets.
+## Verified status
+
+```
+docker compose up -d
+curl -s localhost:8501/_stcore/health      # -> ok
+```
+
+Smoke-tested inside the container: `YOLO('/app/models/yolov8n.pt').predict(bus.jpg)` returns **5 detections**, so capture → detect → count runs end to end.
+
+> **Honest status.** What works today: the container builds, serves, and performs real YOLOv8 inference. What does *not* exist yet: plant-disease or insect weights. The app currently runs **stock COCO YOLOv8n** and says so in a banner. Retarget items 1–4 above are planned, not built.
+>
+> Note for a local (non-Docker) run: `streamlit run app.py` needs to bind a listening socket. Use Docker, or run it in your own terminal — it works there.

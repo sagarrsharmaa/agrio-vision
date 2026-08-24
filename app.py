@@ -11,9 +11,16 @@ from ultralytics import YOLO
 # ─────────────────────────────────────────────
 # AGRIO: resolve the weights source from the environment first so the container can
 # start without a Streamlit secrets file. Falls back to st.secrets for Streamlit Cloud.
-GDRIVE_FILE_ID = os.environ.get("GDRIVE_FILE_ID") or (
-    st.secrets.get("GDRIVE_FILE_ID", "") if hasattr(st, "secrets") else ""
-)
+def _secret(name: str, default: str = "") -> str:
+    """st.secrets raises StreamlitSecretNotFoundError when no secrets.toml exists,
+    which killed the script at import time outside Streamlit Cloud."""
+    try:
+        return st.secrets.get(name, default)
+    except Exception:
+        return default
+
+
+GDRIVE_FILE_ID = os.environ.get("GDRIVE_FILE_ID") or _secret("GDRIVE_FILE_ID", "")
 MODEL_PATH_ENV = os.environ.get("MODEL_PATH")
 MODEL_PATH = MODEL_PATH_ENV or "best.pt"
 
@@ -33,19 +40,29 @@ DISEASE_INFO = {
 # ─────────────────────────────────────────────
 # LOAD MODEL
 # ─────────────────────────────────────────────
+# AGRIO: upstream never published its trained best.pt (private Drive, Roboflow-gated
+# dataset), so the app falls back to stock COCO YOLOv8n. That keeps the whole
+# capture -> detect -> count pipeline runnable end to end while we train our own
+# weights on IP102 + PlantDoc + KVK trap imagery. The banner below makes it
+# unmistakable that these are NOT plant-disease weights.
+PLACEHOLDER_WEIGHTS = os.path.join(os.path.dirname(MODEL_PATH) or ".", "yolov8n.pt")
+
+
+def using_placeholder() -> bool:
+    return not os.path.exists(MODEL_PATH) and not GDRIVE_FILE_ID
+
+
 @st.cache_resource(show_spinner=False)
 def load_model():
-    if not os.path.exists(MODEL_PATH):
-        if not GDRIVE_FILE_ID:
-            st.error(
-                "No model weights found. Mount a trained .pt at %s "
-                "(docker compose: ./models:/app/models) or set GDRIVE_FILE_ID." % MODEL_PATH
-            )
-            st.stop()
+    if os.path.exists(MODEL_PATH):
+        return YOLO(MODEL_PATH)
+    if GDRIVE_FILE_ID:
         with st.spinner("Downloading model weights from Google Drive..."):
             url = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
             gdown.download(url, MODEL_PATH, quiet=False)
-    return YOLO(MODEL_PATH)
+        return YOLO(MODEL_PATH)
+    with st.spinner("No trained weights found - fetching stock YOLOv8n placeholder..."):
+        return YOLO(PLACEHOLDER_WEIGHTS)
 
 
 # ─────────────────────────────────────────────
@@ -135,15 +152,26 @@ def run_video_detection(model, video_path: str, conf_threshold: float):
 # UI
 # ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Plant Disease Detection",
+    page_title="AGRIO Vision - detection service",
     page_icon="🌿",
     layout="wide",
 )
 
-st.title("🌿 Plant Disease Detection")
-st.markdown(
-    "Upload a leaf image or video to detect diseases using a YOLOv8 model"
+st.title("🌿 AGRIO Vision - detection service")
+st.caption(
+    "SIH26180 - bench-side stand-in for the AGRIO edge node's vision stage. "
+    "Forked from muqadasejaz/Plant-Detection-using-YOLOv8 (MIT)."
 )
+st.markdown("Upload a leaf image or video to run YOLOv8 detection.")
+
+if using_placeholder():
+    st.warning(
+        "**Running on stock COCO YOLOv8n, not plant-disease weights.** Upstream never "
+        "published its trained `best.pt`. The pipeline is live end to end, but the class "
+        "labels are COCO classes. Drop a trained `best.pt` into `./models/` (or set "
+        "`GDRIVE_FILE_ID`) to get real disease classes.",
+        icon="⚠️",
+    )
 
 with st.sidebar:
     st.header("Settings")
