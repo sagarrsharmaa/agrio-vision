@@ -9,8 +9,13 @@ from ultralytics import YOLO
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-GDRIVE_FILE_ID = st.secrets["GDRIVE_FILE_ID"]
-MODEL_PATH = "best.pt"
+# AGRIO: resolve the weights source from the environment first so the container can
+# start without a Streamlit secrets file. Falls back to st.secrets for Streamlit Cloud.
+GDRIVE_FILE_ID = os.environ.get("GDRIVE_FILE_ID") or (
+    st.secrets.get("GDRIVE_FILE_ID", "") if hasattr(st, "secrets") else ""
+)
+MODEL_PATH_ENV = os.environ.get("MODEL_PATH")
+MODEL_PATH = MODEL_PATH_ENV or "best.pt"
 
 DISEASE_INFO = {
     "Apple Scab": "Fungal disease causing dark, scabby lesions on leaves and fruit.",
@@ -31,6 +36,12 @@ DISEASE_INFO = {
 @st.cache_resource(show_spinner=False)
 def load_model():
     if not os.path.exists(MODEL_PATH):
+        if not GDRIVE_FILE_ID:
+            st.error(
+                "No model weights found. Mount a trained .pt at %s "
+                "(docker compose: ./models:/app/models) or set GDRIVE_FILE_ID." % MODEL_PATH
+            )
+            st.stop()
         with st.spinner("Downloading model weights from Google Drive..."):
             url = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
             gdown.download(url, MODEL_PATH, quiet=False)

@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+venv
+__pycache__/
+*.pyc
+*.ipynb
+*.mp4
+*.avi
+models/
+best.pt
+*.pt
+.streamlit/secrets.toml
+.env
+README*.md
+LICENSE

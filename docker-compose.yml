@@ -1,0 +1,15 @@
+services:
+  agrio-vision:
+    build: .
+    image: agrio-vision:latest
+    container_name: agrio-vision
+    ports:
+      - "8501:8501"
+    environment:
+      # Either mount weights at ./models/best.pt (preferred) ...
+      MODEL_PATH: /app/models/best.pt
+      # ... or let the app pull them once from Google Drive.
+      GDRIVE_FILE_ID: "${GDRIVE_FILE_ID:-}"
+    volumes:
+      - ./models:/app/models:ro
+    restart: unless-stopped
